@@ -951,6 +951,24 @@ To remove Telegram entirely:
 
 ---
 
+## Tool Availability by Context
+
+The IPC MCP server conditionally exposes tools based on execution context:
+
+### Regular Chat (isScheduledTask: false)
+- `send_message` tool is **NOT available**
+- Agent MUST return response as return value
+- Return value is delivered via Telegram/WhatsApp handler
+
+### Scheduled Tasks (isScheduledTask: true)
+- `send_message` tool **IS available**
+- Agent MUST use send_message to communicate
+- No synchronous return channel exists
+
+This prevents duplicate messages by technically enforcing communication patterns rather than relying on prompt instructions.
+
+---
+
 ## Additional Resources
 
 - [Telegraf.js Documentation](https://telegraf.js.org/)
