@@ -189,7 +189,8 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   lines.push('');
 
   for (const msg of messages) {
-    const sender = msg.role === 'user' ? 'User' : 'Andy';
+    const assistantName = process.env.ASSISTANT_NAME || 'Sara';
+    const sender = msg.role === 'user' ? 'User' : assistantName;
     const content = msg.content.length > 2000
       ? msg.content.slice(0, 2000) + '...'
       : msg.content;
@@ -234,6 +235,33 @@ async function main(): Promise<void> {
   try {
     log('Starting agent...');
 
+    // Configure MCP servers with Parallel AI integration
+    const mcpServers: Record<string, any> = {
+      nanoclaw: ipcMcp
+    };
+
+    // Add Parallel AI MCP servers if API key is available
+    const parallelApiKey = process.env.PARALLEL_API_KEY;
+    if (parallelApiKey) {
+      mcpServers['parallel-search'] = {
+        type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
+        url: 'https://search-mcp.parallel.ai/mcp',
+        headers: {
+          'Authorization': `Bearer ${parallelApiKey}`
+        }
+      };
+      mcpServers['parallel-task'] = {
+        type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
+        url: 'https://task-mcp.parallel.ai/mcp',
+        headers: {
+          'Authorization': `Bearer ${parallelApiKey}`
+        }
+      };
+      log('Parallel AI MCP servers configured');
+    } else {
+      log('PARALLEL_API_KEY not set, skipping Parallel AI integration');
+    }
+
     for await (const message of query({
       prompt,
       options: {
@@ -243,14 +271,14 @@ async function main(): Promise<void> {
           'Bash',
           'Read', 'Write', 'Edit', 'Glob', 'Grep',
           'WebSearch', 'WebFetch',
-          'mcp__nanoclaw__*'
+          'mcp__nanoclaw__*',
+          'mcp__parallel-search__*',
+          'mcp__parallel-task__*'
         ],
         permissionMode: 'bypassPermissions',
         allowDangerouslySkipPermissions: true,
         settingSources: ['project'],
-        mcpServers: {
-          nanoclaw: ipcMcp
-        },
+        mcpServers,
         hooks: {
           PreCompact: [{ hooks: [createPreCompactHook()] }]
         }

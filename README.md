@@ -46,7 +46,8 @@ Then run `/setup`. Claude Code handles everything: dependencies, authentication,
 - **Isolated group context** - Each group has its own `CLAUDE.md` memory, isolated filesystem, and runs in its own container sandbox with only that filesystem mounted
 - **Main channel** - Your private channel (self-chat) for admin control; every other group is completely isolated
 - **Scheduled tasks** - Recurring jobs that run Claude and can message you back
-- **Web access** - Search and fetch content
+- **Web access** - Search and fetch content via WebSearch/WebFetch
+- **Parallel AI integration** - Deep research via Task API with automatic result polling using scheduler
 - **Container isolation** - Agents sandboxed in Apple containers
 - **Optional integrations** - Add Gmail (`/add-gmail`) and more via skills
 
@@ -79,6 +80,29 @@ There are no configuration files to learn. Just tell Claude Code what you want:
 Or run `/customize` for guided changes.
 
 The codebase is small enough that Claude can safely modify it.
+
+### Parallel AI Integration
+
+NanoClaw integrates with [Parallel AI](https://parallel.ai) for advanced web research capabilities via MCP (Model Context Protocol).
+
+**What you get:**
+- **Quick searches** - Fast web lookups using Search API (free to use)
+- **Deep research** - Comprehensive analysis using Task API (asks permission first)
+- **Non-blocking design** - Uses NanoClaw's scheduler to poll for results instead of blocking containers
+
+**Setup:**
+1. Get API key from https://platform.parallel.ai
+2. Add to `.env`: `PARALLEL_API_KEY=your_key_here`
+3. Restart service: `launchctl kickstart -k gui/$(id -u)/com.nanoclaw`
+
+**How it works:**
+- Agent asks permission before expensive deep research
+- Creates Parallel task and gets task ID
+- Schedules polling task (checks every 30s)
+- Automatically sends results when ready
+- No container blocking - scales efficiently
+
+See `groups/main/CLAUDE.md` for usage instructions.
 
 ## Contributing
 

@@ -124,7 +124,7 @@ function buildVolumeMounts(group: RegisteredGroup, isMain: boolean): VolumeMount
   const envFile = path.join(projectRoot, '.env');
   if (fs.existsSync(envFile)) {
     const envContent = fs.readFileSync(envFile, 'utf-8');
-    const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY'];
+    const allowedVars = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'PARALLEL_API_KEY', 'ASSISTANT_NAME'];
     const filteredLines = envContent
       .split('\n')
       .filter(line => {

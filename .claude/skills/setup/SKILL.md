@@ -95,7 +95,13 @@ Build the NanoClaw agent container:
 
 This creates the `nanoclaw-agent:latest` image with Node.js, Chromium, Claude Code CLI, and agent-browser.
 
-Verify the build succeeded (the `container images` command may not work due to a plugin issue, so we verify by running a simple test):
+**Note:** The build script automatically handles the build process:
+- Tries to build with Apple Container first
+- If that fails due to Rosetta requirement (buildkit needs x86_64), it falls back to Docker
+- With Docker: builds natively for arm64, then imports to Apple Container
+- The final container always runs natively (no Rosetta needed at runtime)
+
+Verify the build succeeded:
 
 ```bash
 echo '{}' | container run -i --entrypoint /bin/echo nanoclaw-agent:latest "Container OK" || echo "Container build failed"
