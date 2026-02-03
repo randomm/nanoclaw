@@ -58,10 +58,46 @@ async function setTyping(jid: string, isTyping: boolean): Promise<void> {
   }
 }
 
+/**
+ * Converts markdown to Telegram HTML format
+ * Telegram HTML supports: <b>, <i>, <code>, <pre>, <a>, <u>, <s>
+ */
+function convertMarkdownToTelegramHTML(text: string): string {
+  let html = text;
+
+  // Escape HTML special characters first (but preserve existing HTML if any)
+  html = html
+    .replace(/&(?!amp;|lt;|gt;|quot;)/g, '&amp;')
+    .replace(/<(?!\/?[bius]>|\/?(code|pre|a)[\s>])/g, '&lt;')
+    .replace(/(?<![bius]|code|pre|a)>/g, '&gt;');
+
+  // Convert markdown headers to bold (Telegram doesn't support headers)
+  html = html.replace(/^#{1,6}\s+(.+)$/gm, '<b>$1</b>');
+
+  // Convert **bold** and __bold__
+  html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  html = html.replace(/__(.+?)__/g, '<b>$1</b>');
+
+  // Convert *italic* and _italic_ (but not in URLs or already converted)
+  html = html.replace(/(?<![*_:\w])\*([^*\n]+?)\*(?![*_:\w])/g, '<i>$1</i>');
+  html = html.replace(/(?<![*_:\w])_([^_\n]+?)_(?![*_:\w])/g, '<i>$1</i>');
+
+  // Convert `code`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // Convert [text](url) to <a href="url">text</a>
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+
+  return html;
+}
+
 async function sendTelegramMessage(chatId: string, text: string): Promise<void> {
   try {
-    await telegrafBot.telegram.sendMessage(chatId, text);
-    logger.info({ chatId, length: text.length }, 'Telegram message sent');
+    const htmlText = convertMarkdownToTelegramHTML(text);
+    await telegrafBot.telegram.sendMessage(chatId, htmlText, {
+      parse_mode: 'HTML'
+    });
+    logger.info({ chatId, length: htmlText.length }, 'Telegram message sent');
   } catch (error) {
     logger.error({ error, chatId }, 'Failed to send Telegram message');
     throw error;

@@ -226,6 +226,20 @@ Scheduled tasks have access to:
 
 This is configured in `container/agent-runner/src/index.ts` and requires no changes during Telegram integration.
 
+### Message Formatting (Automatic!)
+
+The Telegram integration automatically converts agent markdown to Telegram HTML:
+
+- `## Headers` → **Bold text** (Telegram doesn't support headers)
+- `**bold**` → **bold**
+- `*italic*` → *italic*
+- `[link](url)` → clickable links
+- `` `code` `` → monospace code
+
+**You don't need to do anything** - the conversion happens automatically in `sendTelegramMessage()`.
+
+The function uses `parse_mode: 'HTML'` which is more reliable than MarkdownV2 (no special character escaping issues).
+
 ---
 
 ## Replace WhatsApp Mode
