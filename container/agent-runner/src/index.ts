@@ -171,34 +171,56 @@ function parseTranscript(content: string): ParsedMessage[] {
 }
 
 function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | null): string {
-  const now = new Date();
-  const formatDateTime = (d: Date) => d.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
+   const now = new Date();
+   const formatDateTime = (d: Date) => d.toLocaleString('en-US', {
+     month: 'short',
+     day: 'numeric',
+     hour: 'numeric',
+     minute: '2-digit',
+     hour12: true
+   });
 
-  const lines: string[] = [];
-  lines.push(`# ${title || 'Conversation'}`);
-  lines.push('');
-  lines.push(`Archived: ${formatDateTime(now)}`);
-  lines.push('');
-  lines.push('---');
-  lines.push('');
+   const lines: string[] = [];
+   lines.push(`# ${title || 'Conversation'}`);
+   lines.push('');
+   lines.push(`Archived: ${formatDateTime(now)}`);
+   lines.push('');
+   lines.push('---');
+   lines.push('');
 
-  for (const msg of messages) {
-     const assistantName = process.env.ASSISTANT_NAME || 'Pii';
-    const sender = msg.role === 'user' ? 'User' : assistantName;
-    const content = msg.content.length > 2000
-      ? msg.content.slice(0, 2000) + '...'
-      : msg.content;
-    lines.push(`**${sender}**: ${content}`);
-    lines.push('');
+   for (const msg of messages) {
+      const assistantName = process.env.ASSISTANT_NAME || 'Pii';
+     const sender = msg.role === 'user' ? 'User' : assistantName;
+     const content = msg.content.length > 2000
+       ? msg.content.slice(0, 2000) + '...'
+       : msg.content;
+     lines.push(`**${sender}**: ${content}`);
+     lines.push('');
+   }
+
+   return lines.join('\n');
+}
+
+/**
+ * Store agent meta-summary in CLAUDE.md for future context
+ */
+function storeMetaSummaryInMemory(groupFolder: string, metaSummary: string): void {
+  try {
+    const claudePath = path.join(groupFolder, 'CLAUDE.md');
+    
+    if (!fs.existsSync(claudePath)) {
+      log(`CLAUDE.md not found at ${claudePath}, skipping meta-summary storage`);
+      return;
+    }
+
+    const timestamp = new Date().toISOString();
+    const entry = `\n\n---\n### Agent Meta-Summary (${timestamp})\n${metaSummary}\n`;
+    
+    fs.appendFileSync(claudePath, entry);
+    log(`Meta-summary appended to ${claudePath}`);
+  } catch (err) {
+    log(`Failed to store meta-summary: ${err instanceof Error ? err.message : String(err)}`);
   }
-
-  return lines.join('\n');
 }
 
 async function main(): Promise<void> {
@@ -224,83 +246,96 @@ async function main(): Promise<void> {
     isScheduledTask: input.isScheduledTask || false
   });
 
-  let result: string | null = null;
-  let newSessionId: string | undefined;
+   let result: string | null = null;
+   let metaSummary: string | null = null;
+   let newSessionId: string | undefined;
 
-  // Add context for scheduled tasks
-  let prompt = input.prompt;
-  if (input.isScheduledTask) {
-    prompt = `[SCHEDULED TASK - You are running automatically, not in response to a user message. Use mcp__nanoclaw__send_message if needed to communicate with the user.]\n\n${input.prompt}`;
-  }
+   // Add context for scheduled tasks
+   let prompt = input.prompt;
+   if (input.isScheduledTask) {
+     prompt = `[SCHEDULED TASK - You are running automatically, not in response to a user message. Use mcp__nanoclaw__send_message if needed to communicate with the user.]\n\n${input.prompt}`;
+   }
 
-  try {
-    log('Starting agent...');
+   try {
+     log('Starting agent...');
 
-    // Configure MCP servers with Parallel AI integration
-    const mcpServers: Record<string, any> = {
-      nanoclaw: ipcMcp
-    };
+     // Configure MCP servers with Parallel AI integration
+     const mcpServers: Record<string, any> = {
+       nanoclaw: ipcMcp
+     };
 
-    // Add Parallel AI MCP servers if API key is available
-    const parallelApiKey = process.env.PARALLEL_API_KEY;
-    if (parallelApiKey) {
-      mcpServers['parallel-search'] = {
-        type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
-        url: 'https://search-mcp.parallel.ai/mcp',
-        headers: {
-          'Authorization': `Bearer ${parallelApiKey}`
-        }
-      };
-      mcpServers['parallel-task'] = {
-        type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
-        url: 'https://task-mcp.parallel.ai/mcp',
-        headers: {
-          'Authorization': `Bearer ${parallelApiKey}`
-        }
-      };
-      log('Parallel AI MCP servers configured');
-    } else {
-      log('PARALLEL_API_KEY not set, skipping Parallel AI integration');
-    }
+     // Add Parallel AI MCP servers if API key is available
+     const parallelApiKey = process.env.PARALLEL_API_KEY;
+     if (parallelApiKey) {
+       mcpServers['parallel-search'] = {
+         type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
+         url: 'https://search-mcp.parallel.ai/mcp',
+         headers: {
+           'Authorization': `Bearer ${parallelApiKey}`
+         }
+       };
+       mcpServers['parallel-task'] = {
+         type: 'http',  // REQUIRED: Must specify type for HTTP MCP servers
+         url: 'https://task-mcp.parallel.ai/mcp',
+         headers: {
+           'Authorization': `Bearer ${parallelApiKey}`
+         }
+       };
+       log('Parallel AI MCP servers configured');
+     } else {
+       log('PARALLEL_API_KEY not set, skipping Parallel AI integration');
+     }
 
-    for await (const message of query({
-      prompt,
-      options: {
-        cwd: '/workspace/group',
-        resume: input.sessionId,
-        allowedTools: [
-          'Bash',
-          'Read', 'Write', 'Edit', 'Glob', 'Grep',
-          'WebSearch', 'WebFetch',
-          'mcp__nanoclaw__*',
-          'mcp__parallel-search__*',
-          'mcp__parallel-task__*'
-        ],
-        permissionMode: 'bypassPermissions',
-        allowDangerouslySkipPermissions: true,
-        settingSources: ['project'],
-        mcpServers,
-        hooks: {
-          PreCompact: [{ hooks: [createPreCompactHook()] }]
-        }
+     for await (const message of query({
+       prompt,
+       options: {
+         cwd: '/workspace/group',
+         resume: input.sessionId,
+         allowedTools: [
+           'Bash',
+           'Read', 'Write', 'Edit', 'Glob', 'Grep',
+           'WebSearch', 'WebFetch',
+           'mcp__nanoclaw__*',
+           'mcp__parallel-search__*',
+           'mcp__parallel-task__*'
+         ],
+         permissionMode: 'bypassPermissions',
+         allowDangerouslySkipPermissions: true,
+         settingSources: ['project'],
+         mcpServers,
+         hooks: {
+           PreCompact: [{ hooks: [createPreCompactHook()] }]
+         }
+       }
+     })) {
+       if (message.type === 'system' && message.subtype === 'init') {
+         newSessionId = message.session_id;
+         log(`Session initialized: ${newSessionId}`);
+       }
+
+       if ('result' in message && message.result) {
+         if (!result) {
+           // First result = user-facing response
+           result = message.result as string;
+         } else {
+           // Subsequent results = meta-summary for memory
+           metaSummary = message.result as string;
+         }
+       }
+     }
+
+      if (metaSummary) {
+        const preview = metaSummary.slice(0, 100).replace(/\n/g, ' ');
+        log(`Meta-summary captured: ${preview}...`);
+        storeMetaSummaryInMemory(input.groupFolder, metaSummary);
       }
-    })) {
-      if (message.type === 'system' && message.subtype === 'init') {
-        newSessionId = message.session_id;
-        log(`Session initialized: ${newSessionId}`);
-      }
 
-      if ('result' in message && message.result) {
-        result = message.result as string;
-      }
-    }
-
-    log('Agent completed successfully');
-    writeOutput({
-      status: 'success',
-      result,
-      newSessionId
-    });
+      log('Agent completed successfully');
+      writeOutput({
+        status: 'success',
+        result,
+        newSessionId
+      });
 
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
