@@ -17,6 +17,7 @@ export interface IpcMcpContext {
   chatJid: string;
   groupFolder: string;
   isMain: boolean;
+  isScheduledTask: boolean;
 }
 
 function writeIpcFile(dir: string, data: object): string {
@@ -34,19 +35,20 @@ function writeIpcFile(dir: string, data: object): string {
 }
 
 export function createIpcMcp(ctx: IpcMcpContext) {
-  const { chatJid, groupFolder, isMain } = ctx;
+  const { chatJid, groupFolder, isMain, isScheduledTask } = ctx;
 
-  return createSdkMcpServer({
-    name: 'nanoclaw',
-    version: '1.0.0',
-    tools: [
+  const tools: any[] = [];
+
+  // Only expose send_message in scheduled task context
+  if (isScheduledTask) {
+    tools.push(
       tool(
         'send_message',
-        'Send a message to the current WhatsApp group. Use this to proactively share information or updates.',
+        'Send a message back to the chat. Use this for scheduled tasks or long-running operations.',
         {
           text: z.string().describe('The message text to send')
         },
-        async (args) => {
+        async (args: any) => {
           const data = {
             type: 'message',
             chatJid,
@@ -64,9 +66,13 @@ export function createIpcMcp(ctx: IpcMcpContext) {
             }]
           };
         }
-      ),
+      )
+    );
+  }
 
-      tool(
+  // Add all other tools unconditionally
+  tools.push(
+    tool(
         'schedule_task',
         `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools.
 
@@ -91,7 +97,7 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
           context_mode: z.enum(['group', 'isolated']).default('group').describe('group=runs with chat history and memory, isolated=fresh session (include context in prompt)'),
           target_group: z.string().optional().describe('Target group folder (main only, defaults to current group)')
         },
-        async (args) => {
+        async (args: any) => {
           // Validate schedule_value before writing IPC
           if (args.schedule_type === 'cron') {
             try {
@@ -151,8 +157,8 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
         'list_tasks',
         'List all scheduled tasks. From main: shows all tasks. From other groups: shows only that group\'s tasks.',
         {},
-        async () => {
-          const tasksFile = path.join(IPC_DIR, 'current_tasks.json');
+        async (_args: any) => {
+           const tasksFile = path.join(IPC_DIR, 'current_tasks.json');
 
           try {
             if (!fs.existsSync(tasksFile)) {
@@ -206,10 +212,10 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
         {
           task_id: z.string().describe('The task ID to pause')
         },
-        async (args) => {
-          const data = {
-            type: 'pause_task',
-            taskId: args.task_id,
+        async (args: any) => {
+           const data = {
+             type: 'pause_task',
+             taskId: args.task_id,
             groupFolder,
             isMain,
             timestamp: new Date().toISOString()
@@ -232,10 +238,10 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
         {
           task_id: z.string().describe('The task ID to resume')
         },
-        async (args) => {
-          const data = {
-            type: 'resume_task',
-            taskId: args.task_id,
+        async (args: any) => {
+           const data = {
+             type: 'resume_task',
+             taskId: args.task_id,
             groupFolder,
             isMain,
             timestamp: new Date().toISOString()
@@ -258,10 +264,10 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
         {
           task_id: z.string().describe('The task ID to cancel')
         },
-        async (args) => {
-          const data = {
-            type: 'cancel_task',
-            taskId: args.task_id,
+        async (args: any) => {
+           const data = {
+             type: 'cancel_task',
+             taskId: args.task_id,
             groupFolder,
             isMain,
             timestamp: new Date().toISOString()
@@ -289,17 +295,17 @@ Use available_groups.json to find the JID for a group. The folder name should be
           folder: z.string().describe('Folder name for group files (lowercase, hyphens, e.g., "family-chat")'),
           trigger: z.string().describe('Trigger word (e.g., "@Andy")')
         },
-        async (args) => {
-          if (!isMain) {
-            return {
-              content: [{ type: 'text', text: 'Only the main group can register new groups.' }],
-              isError: true
-            };
-          }
+        async (args: any) => {
+           if (!isMain) {
+             return {
+               content: [{ type: 'text', text: 'Only the main group can register new groups.' }],
+               isError: true
+             };
+           }
 
-          const data = {
-            type: 'register_group',
-            jid: args.jid,
+           const data = {
+             type: 'register_group',
+             jid: args.jid,
             name: args.name,
             folder: args.folder,
             trigger: args.trigger,
@@ -315,7 +321,12 @@ Use available_groups.json to find the JID for a group. The folder name should be
             }]
           };
         }
-      )
-    ]
+       )
+    );
+
+  return createSdkMcpServer({
+    name: 'nanoclaw',
+    version: '1.0.0',
+    tools
   });
 }

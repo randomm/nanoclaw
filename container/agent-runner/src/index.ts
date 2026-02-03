@@ -189,7 +189,7 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
   lines.push('');
 
   for (const msg of messages) {
-    const assistantName = process.env.ASSISTANT_NAME || 'Sara';
+     const assistantName = process.env.ASSISTANT_NAME || 'Pii';
     const sender = msg.role === 'user' ? 'User' : assistantName;
     const content = msg.content.length > 2000
       ? msg.content.slice(0, 2000) + '...'
@@ -220,7 +220,8 @@ async function main(): Promise<void> {
   const ipcMcp = createIpcMcp({
     chatJid: input.chatJid,
     groupFolder: input.groupFolder,
-    isMain: input.isMain
+    isMain: input.isMain,
+    isScheduledTask: input.isScheduledTask || false
   });
 
   let result: string | null = null;
